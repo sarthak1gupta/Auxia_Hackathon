@@ -46,7 +46,8 @@ const AdminDashboard = () => {
   const [gradesheetMessage, setGradesheetMessage] = useState(null);
   const [gradesheetForm, setGradesheetForm] = useState({
     studentId: '',
-    semester: ''
+    semester: '',
+    department: ''
   });
 
   // Feedback System State
@@ -278,6 +279,210 @@ const AdminDashboard = () => {
       });
     } finally {
       setAddingUser(false);
+    }
+  };
+
+  // Course Management Handlers
+  const handleCourseChange = (e) => {
+    const { name, value } = e.target;
+    console.log('Course field change:', { name, value });
+    setNewCourse(prev => {
+      const updated = {
+        ...prev,
+        [name]: value
+      };
+      console.log('Updated course state:', updated);
+      return updated;
+    });
+    setCourseMessage(null); // Clear any previous messages
+  };
+
+  const handleFacultySelection = (e) => {
+    const selectedOptions = Array.from(e.target.selectedOptions, option => option.value);
+    console.log('Faculty selection change:', selectedOptions);
+    setNewCourse(prev => ({
+      ...prev,
+      facultyIds: selectedOptions
+    }));
+    setCourseMessage(null);
+  };
+
+  const resetCourseForm = () => {
+    setNewCourse({
+      code: '',
+      name: '',
+      department: '',
+      type: 'core',
+      seatLimit: '',
+      semester: '',
+      facultyIds: []
+    });
+  };
+
+  const handleAddCourse = async (e) => {
+    e.preventDefault();
+    console.log('Form submitted!');
+    setAddingCourse(true);
+    setCourseMessage(null);
+
+    try {
+      console.log('Form data:', newCourse);
+      // Validate required fields
+      if (!newCourse.code || !newCourse.name || !newCourse.department || !newCourse.seatLimit || !newCourse.semester) {
+        console.log('Missing required fields');
+        setCourseMessage({
+          type: 'error',
+          text: 'Please fill in all required fields'
+        });
+        return;
+      }
+
+      const courseData = {
+        code: newCourse.code,
+        name: newCourse.name,
+        department: newCourse.department,
+        type: newCourse.type,
+        seatLimit: parseInt(newCourse.seatLimit),
+        semester: parseInt(newCourse.semester),
+        facultyIds: newCourse.facultyIds || []
+      };
+
+      console.log('Sending course data to backend:', courseData);
+      console.log('API call to createCourse...');
+      const response = await adminAPI.createCourse(courseData);
+
+      console.log('Backend response:', response);
+      console.log('Response status:', response.status);
+      console.log('Response data:', response.data);
+
+      if (response.data.message === 'Course created successfully') {
+        setCourseMessage({
+          type: 'success',
+          text: 'Course created successfully!'
+        });
+        resetCourseForm();
+        
+        // Refresh course data
+        const coursesResponse = await adminAPI.getAllCourses();
+        if (coursesResponse.data) {
+          setCourses(coursesResponse.data);
+        }
+      } else {
+        setCourseMessage({
+          type: 'error',
+          text: response.data.message || 'Failed to create course'
+        });
+      }
+    } catch (error) {
+      console.error('Error creating course:', error);
+      console.error('Error details:', {
+        message: error.message,
+        response: error.response,
+        request: error.request,
+        config: error.config
+      });
+      setCourseMessage({
+        type: 'error',
+        text: error.response?.data?.message || error.message || 'An error occurred while creating the course'
+      });
+    } finally {
+      setAddingCourse(false);
+    }
+  };
+
+  // Gradesheet Management Handlers
+  const handleGradesheetChange = (e) => {
+    const { name, value } = e.target;
+    setGradesheetForm(prev => ({
+      ...prev,
+      [name]: value
+    }));
+    setGradesheetMessage(null);
+  };
+
+  const handleGenerateGradesheet = async (e) => {
+    e.preventDefault();
+    setGeneratingGradesheet(true);
+    setGradesheetMessage(null);
+
+    try {
+      // Validate required fields
+      if (!gradesheetForm.semester || !gradesheetForm.department) {
+        setGradesheetMessage({
+          type: 'error',
+          text: 'Please select both semester and department'
+        });
+        return;
+      }
+
+      const gradesheetData = {
+        semester: parseInt(gradesheetForm.semester),
+        department: gradesheetForm.department
+      };
+
+      console.log('Generating gradesheets for:', gradesheetData);
+      const response = await adminAPI.generateGradesheet(gradesheetData);
+
+      console.log('Backend response:', response);
+
+      if (response.data.message && response.data.message.includes('Successfully generated')) {
+        setGradesheetMessage({
+          type: 'success',
+          text: response.data.message
+        });
+        
+        // Reset form
+        setGradesheetForm({
+          studentId: '',
+          semester: '',
+          department: ''
+        });
+        
+        // Refresh gradesheet data
+        const gradesheetsResponse = await adminAPI.getAllGradesheets();
+        if (gradesheetsResponse.data) {
+          setGradesheets(gradesheetsResponse.data);
+        }
+      } else {
+        setGradesheetMessage({
+          type: 'error',
+          text: response.data.message || 'Failed to generate gradesheets'
+        });
+      }
+    } catch (error) {
+      console.error('Error generating gradesheets:', error);
+      setGradesheetMessage({
+        type: 'error',
+        text: error.response?.data?.message || 'An error occurred while generating gradesheets'
+      });
+    } finally {
+      setGeneratingGradesheet(false);
+    }
+  };
+
+  const handleReleaseGradesheet = async (gradesheetId) => {
+    try {
+      const response = await adminAPI.releaseGradesheet(gradesheetId);
+      
+      if (response.data.message === 'Gradesheet released successfully') {
+        // Refresh gradesheet data
+        const gradesheetsResponse = await adminAPI.getAllGradesheets();
+        if (gradesheetsResponse.data) {
+          setGradesheets(gradesheetsResponse.data);
+        }
+        
+        // Show success message
+        setGradesheetMessage({
+          type: 'success',
+          text: 'Gradesheet released successfully!'
+        });
+      }
+    } catch (error) {
+      console.error('Error releasing gradesheet:', error);
+      setGradesheetMessage({
+        type: 'error',
+        text: error.response?.data?.message || 'An error occurred while releasing the gradesheet'
+      });
     }
   };
 
@@ -600,106 +805,218 @@ const AdminDashboard = () => {
           <div className="space-y-6">
             <div className="bg-white p-6 rounded-lg shadow">
               <h3 className="text-xl font-semibold mb-4">Add New Course</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Course Code
-                  </label>
-                  <input 
-                    type="text" 
-                    className="w-full p-2 border border-gray-300 rounded-md"
-                    placeholder="e.g., CS201"
-                  />
+              <form onSubmit={handleAddCourse} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Course Code
+                    </label>
+                    <input 
+                      type="text" 
+                      name="code"
+                      value={newCourse.code}
+                      onChange={handleCourseChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      placeholder="e.g., CS201"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Course Name
+                    </label>
+                    <input 
+                      type="text" 
+                      name="name"
+                      value={newCourse.name}
+                      onChange={handleCourseChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      placeholder="Enter course name"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Department
+                    </label>
+                    <select 
+                      name="department"
+                      value={newCourse.department}
+                      onChange={handleCourseChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      required
+                    >
+                      <option value="">Select Department</option>
+                      <option value="Computer Science">Computer Science</option>
+                      <option value="Information Science">Information Science</option>
+                      <option value="Electronics">Electronics</option>
+                      <option value="Mechanical">Mechanical</option>
+                      <option value="Civil">Civil</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Course Type
+                    </label>
+                    <select 
+                      name="type"
+                      value={newCourse.type}
+                      onChange={handleCourseChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      required
+                    >
+                      <option value="core">Core</option>
+                      <option value="elective">Elective</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Seat Limit
+                    </label>
+                    <input 
+                      type="number" 
+                      name="seatLimit"
+                      value={newCourse.seatLimit}
+                      onChange={handleCourseChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      placeholder="Enter seat limit"
+                      min="1"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Semester
+                    </label>
+                    <select 
+                      name="semester"
+                      value={newCourse.semester}
+                      onChange={handleCourseChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      required
+                    >
+                      <option value="">Select Semester</option>
+                      {[1, 2, 3, 4, 5, 6, 7, 8].map(sem => (
+                        <option key={sem} value={sem}>{sem}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Allocate Faculty (Optional)
+                    </label>
+                    <select 
+                      multiple
+                      name="facultyIds"
+                      value={newCourse.facultyIds}
+                      onChange={handleFacultySelection}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      size="3"
+                    >
+                      {faculty.map(f => (
+                        <option key={f._id} value={f._id}>
+                          {f.name} - {f.department}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Hold Ctrl/Cmd to select multiple faculty members
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Course Name
-                  </label>
-                  <input 
-                    type="text" 
-                    className="w-full p-2 border border-gray-300 rounded-md"
-                    placeholder="Enter course name"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Department
-                  </label>
-                  <select className="w-full p-2 border border-gray-300 rounded-md">
-                    <option>Computer Science</option>
-                    <option>Information Science</option>
-                    <option>Electronics</option>
-                    <option>Mechanical</option>
-                    <option>Civil</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Course Type
-                  </label>
-                  <select className="w-full p-2 border border-gray-300 rounded-md">
-                    <option>Core</option>
-                    <option>Elective</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Seat Limit
-                  </label>
-                  <input 
-                    type="number" 
-                    className="w-full p-2 border border-gray-300 rounded-md"
-                    placeholder="Enter seat limit"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Semester
-                  </label>
-                  <select className="w-full p-2 border border-gray-300 rounded-md">
-                    {[1, 2, 3, 4, 5, 6, 7, 8].map(sem => (
-                      <option key={sem} value={sem}>{sem}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <button className="mt-4 bg-green-600 text-white px-6 py-2 rounded-md">
-                Add Course
-              </button>
+                
+                {courseMessage && (
+                  <div className={`p-3 rounded-md ${
+                    courseMessage.type === 'success' 
+                      ? 'bg-green-100 border border-green-400 text-green-700' 
+                      : 'bg-red-100 border border-red-400 text-red-700'
+                  }`}>
+                    {courseMessage.text}
+                  </div>
+                )}
+                
+                <button 
+                  type="submit" 
+                  disabled={addingCourse}
+                  className={`px-6 py-2 rounded-md text-white ${
+                    addingCourse 
+                      ? 'bg-gray-400 cursor-not-allowed' 
+                      : 'bg-green-600 hover:bg-green-700'
+                  }`}
+                >
+                  {addingCourse ? 'Adding Course...' : 'Add Course'}
+                </button>
+              </form>
             </div>
 
             <div className="bg-white p-6 rounded-lg shadow">
-              <h3 className="text-xl font-semibold mb-4">Course Allocation</h3>
-              <div className="space-y-4">
-                <div className="border rounded-lg p-4">
-                  <h4 className="font-medium mb-2">Data Structures (CS201)</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Allocate Faculty
-                      </label>
-                      <select className="w-full p-2 border border-gray-300 rounded-md">
-                        <option>Dr. Smith</option>
-                        <option>Dr. Johnson</option>
-                        <option>Dr. Williams</option>
-                      </select>
+              <h3 className="text-xl font-semibold mb-4">All Courses</h3>
+              {courses.length === 0 ? (
+                <p className="text-gray-500 text-center py-4">No courses found. Add your first course above.</p>
+              ) : (
+                <div className="space-y-4">
+                  {courses.map((course) => (
+                    <div key={course._id} className="border rounded-lg p-4">
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <h4 className="font-medium text-lg">{course.name} ({course.code})</h4>
+                          <p className="text-sm text-gray-600">
+                            {course.department} • {course.type.charAt(0).toUpperCase() + course.type.slice(1)} • Semester {course.semester}
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            Seats: {course.seatsFilled || 0}/{course.seatLimit}
+                          </p>
+                        </div>
+                        <div className="flex space-x-2">
+                          <button className="text-blue-600 hover:text-blue-900 text-sm font-medium">
+                            Edit
+                          </button>
+                          <button className="text-red-600 hover:text-red-900 text-sm font-medium">
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                      
+                      {course.faculty && course.faculty.length > 0 && (
+                        <div className="mt-3">
+                          <p className="text-sm font-medium text-gray-700 mb-2">Allocated Faculty:</p>
+                          <div className="flex flex-wrap gap-2">
+                            {course.faculty.map((facultyMember, index) => (
+                              <span 
+                                key={facultyMember._id || index}
+                                className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full"
+                              >
+                                {facultyMember.name}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {course.students && course.students.length > 0 && (
+                        <div className="mt-3">
+                          <p className="text-sm font-medium text-gray-700 mb-2">Enrolled Students:</p>
+                          <div className="flex flex-wrap gap-2">
+                            {course.students.slice(0, 5).map((student, index) => (
+                              <span 
+                                key={student._id || index}
+                                className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full"
+                              >
+                                {student.name}
+                              </span>
+                            ))}
+                            {course.students.length > 5 && (
+                              <span className="px-2 py-1 bg-gray-100 text-gray-800 text-xs rounded-full">
+                                +{course.students.length - 5} more
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Seat Limit
-                      </label>
-                      <input 
-                        type="number" 
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                        defaultValue="50"
-                      />
-                    </div>
-                  </div>
-                  <button className="mt-3 bg-blue-600 text-white px-4 py-2 rounded-md text-sm">
-                    Update Allocation
-                  </button>
+                  ))}
                 </div>
-              </div>
+              )}
             </div>
           </div>
         );
@@ -709,66 +1026,143 @@ const AdminDashboard = () => {
           <div className="space-y-6">
             <div className="bg-white p-6 rounded-lg shadow">
               <h3 className="text-xl font-semibold mb-4">Generate Gradesheets</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Select Semester
-                  </label>
-                  <select className="w-full p-2 border border-gray-300 rounded-md">
-                    <option>Semester 1</option>
-                    <option>Semester 2</option>
-                    <option>Semester 3</option>
-                    <option>Semester 4</option>
-                  </select>
+              <form onSubmit={handleGenerateGradesheet} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Select Semester
+                    </label>
+                    <select 
+                      name="semester"
+                      value={gradesheetForm.semester}
+                      onChange={handleGradesheetChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      required
+                    >
+                      <option value="">Select Semester</option>
+                      {[1, 2, 3, 4, 5, 6, 7, 8].map(sem => (
+                        <option key={sem} value={sem}>Semester {sem}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Select Department
+                    </label>
+                    <select 
+                      name="department"
+                      value={gradesheetForm.department}
+                      onChange={handleGradesheetChange}
+                      className="w-full p-2 border border-gray-300 rounded-md"
+                      required
+                    >
+                      <option value="">Select Department</option>
+                      <option value="Computer Science">Computer Science</option>
+                      <option value="Information Science">Information Science</option>
+                      <option value="Electronics">Electronics</option>
+                      <option value="Mechanical">Mechanical</option>
+                      <option value="Civil">Civil</option>
+                    </select>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Select Department
-                  </label>
-                  <select className="w-full p-2 border border-gray-300 rounded-md">
-                    <option>Computer Science</option>
-                    <option>Information Science</option>
-                    <option>Electronics</option>
-                  </select>
-                </div>
-                <button className="bg-green-600 text-white px-6 py-2 rounded-md">
-                  Generate Gradesheets
+                
+                {gradesheetMessage && (
+                  <div className={`p-3 rounded-md ${
+                    gradesheetMessage.type === 'success' 
+                      ? 'bg-green-100 border border-green-400 text-green-700' 
+                      : 'bg-red-100 border border-red-400 text-red-700'
+                  }`}>
+                    {gradesheetMessage.text}
+                  </div>
+                )}
+                
+                <button 
+                  type="submit" 
+                  disabled={generatingGradesheet}
+                  className={`px-6 py-2 rounded-md text-white ${
+                    generatingGradesheet 
+                      ? 'bg-gray-400 cursor-not-allowed' 
+                      : 'bg-green-600 hover:bg-green-700'
+                  }`}
+                >
+                  {generatingGradesheet ? 'Generating...' : 'Generate Gradesheets'}
                 </button>
-              </div>
+              </form>
             </div>
 
             <div className="bg-white p-6 rounded-lg shadow">
-              <h3 className="text-xl font-semibold mb-4">Pending Reviews</h3>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center p-4 border rounded-lg">
-                  <div>
-                    <h4 className="font-medium">John Doe - CS201</h4>
-                    <p className="text-sm text-gray-600">Data Structures | Semester 3</p>
-                  </div>
-                  <div className="flex space-x-2">
-                    <button className="text-blue-600 hover:text-blue-900 text-sm font-medium">
-                      Review
-                    </button>
-                    <button className="text-green-600 hover:text-green-900 text-sm font-medium">
-                      Approve
-                    </button>
-                  </div>
+              <h3 className="text-xl font-semibold mb-4">All Gradesheets</h3>
+              {gradesheets.length === 0 ? (
+                <p className="text-gray-500 text-center py-4">No gradesheets found. Generate gradesheets above.</p>
+              ) : (
+                <div className="space-y-4">
+                  {gradesheets.map((gradesheet) => (
+                    <div key={gradesheet._id} className="border rounded-lg p-4">
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <h4 className="font-medium text-lg">
+                            {gradesheet.student?.name || 'Unknown Student'} - {gradesheet.student?.usn || 'N/A'}
+                          </h4>
+                          <p className="text-sm text-gray-600">
+                            Semester {gradesheet.semester} • {gradesheet.student?.department || 'N/A'}
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            CGPA: {gradesheet.cgpa ? gradesheet.cgpa.toFixed(2) : 'Not calculated'}
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            Status: {gradesheet.released ? 
+                              <span className="text-green-600 font-medium">Released</span> : 
+                              <span className="text-yellow-600 font-medium">Pending Review</span>
+                            }
+                          </p>
+                        </div>
+                        <div className="flex space-x-2">
+                          {!gradesheet.released && (
+                            <button 
+                              onClick={() => handleReleaseGradesheet(gradesheet._id)}
+                              className="text-green-600 hover:text-green-900 text-sm font-medium"
+                            >
+                              Release
+                            </button>
+                          )}
+                          <button className="text-blue-600 hover:text-blue-900 text-sm font-medium">
+                            View Details
+                          </button>
+                        </div>
+                      </div>
+                      
+                      {gradesheet.courses && gradesheet.courses.length > 0 && (
+                        <div className="mt-3">
+                          <p className="text-sm font-medium text-gray-700 mb-2">Course Grades:</p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            {gradesheet.courses.map((courseGrade, index) => (
+                              <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                                <span className="text-sm">
+                                  {courseGrade.course?.code || 'N/A'} - {courseGrade.course?.name || 'Unknown Course'}
+                                </span>
+                                <div className="flex space-x-2">
+                                  <span className="text-sm text-gray-600">
+                                    Marks: {courseGrade.marks || 'N/A'}
+                                  </span>
+                                  <span className={`text-sm font-medium ${
+                                    courseGrade.grade === 'A' ? 'text-green-600' :
+                                    courseGrade.grade === 'B' ? 'text-blue-600' :
+                                    courseGrade.grade === 'C' ? 'text-yellow-600' :
+                                    courseGrade.grade === 'D' ? 'text-orange-600' :
+                                    courseGrade.grade === 'F' ? 'text-red-600' : 'text-gray-600'
+                                  }`}>
+                                    {courseGrade.grade || 'N/A'}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
-                <div className="flex justify-between items-center p-4 border rounded-lg">
-                  <div>
-                    <h4 className="font-medium">Jane Smith - CS301</h4>
-                    <p className="text-sm text-gray-600">Web Development | Semester 5</p>
-                  </div>
-                  <div className="flex space-x-2">
-                    <button className="text-blue-600 hover:text-blue-900 text-sm font-medium">
-                      Review
-                    </button>
-                    <button className="text-green-600 hover:text-green-900 text-sm font-medium">
-                      Approve
-                    </button>
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
           </div>
         );

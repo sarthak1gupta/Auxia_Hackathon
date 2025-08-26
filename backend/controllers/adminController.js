@@ -37,11 +37,15 @@ const updateProfile = async (req, res) => {
 // Create new course
 const createCourse = async (req, res) => {
   try {
-    const { code, name, department, type, seatLimit, facultyIds } = req.body;
+    console.log('createCourse called with body:', req.body);
+    const { code, name, department, type, seatLimit, semester, facultyIds } = req.body;
+    
+    console.log('Extracted data:', { code, name, department, type, seatLimit, semester, facultyIds });
     
     // Check if course code already exists
     const existingCourse = await Course.findOne({ code });
     if (existingCourse) {
+      console.log('Course code already exists:', code);
       return res.status(400).json({ message: 'Course code already exists' });
     }
     
@@ -63,6 +67,7 @@ const createCourse = async (req, res) => {
       department,
       type,
       seatLimit,
+      semester,
       faculty: facultyIds || []
     });
     
@@ -76,8 +81,10 @@ const createCourse = async (req, res) => {
       );
     }
     
+    console.log('Course created successfully:', course);
     res.status(201).json({ message: 'Course created successfully', course });
   } catch (error) {
+    console.error('Error in createCourse:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -208,59 +215,96 @@ const getAllStudents = async (req, res) => {
   }
 };
 
-// Generate gradesheet for a student
+// Generate gradesheets for students in a semester and department
 const generateGradesheet = async (req, res) => {
   try {
-    const { studentId, semester } = req.body;
+    const { semester, department } = req.body;
     
-    const student = await Student.findById(studentId);
-    if (!student) {
-      return res.status(404).json({ message: 'Student not found' });
+    if (!semester || !department) {
+      return res.status(400).json({ message: 'Semester and department are required' });
     }
     
-    // Check if gradesheet already exists
-    let gradesheet = await Gradesheet.findOne({ student: studentId, semester });
+    // Find all students in the specified department and semester
+    const students = await Student.find({ 
+      department: department,
+      semester: parseInt(semester)
+    });
     
-    if (gradesheet) {
-      return res.status(400).json({ message: 'Gradesheet already exists for this semester' });
+    if (students.length === 0) {
+      return res.status(404).json({ message: 'No students found for the specified semester and department' });
     }
     
-    // Get all courses for the student in this semester
-    const allCourses = [...student.coreCourses, ...student.electiveCourses];
+    const generatedGradesheets = [];
+    const errors = [];
     
-    // Find existing gradesheet entries for these courses
-    const existingGrades = await Gradesheet.find({
-      student: studentId,
-      'courses.course': { $in: allCourses }
-    });
-    
-    // Create new gradesheet
-    gradesheet = new Gradesheet({
-      student: studentId,
-      semester,
-      courses: [],
-      cgpa: null,
-      released: false
-    });
-    
-    // Add course grades if they exist
-    if (existingGrades.length > 0) {
-      for (const grade of existingGrades) {
-        for (const courseGrade of grade.courses) {
-          if (allCourses.includes(courseGrade.course)) {
-            gradesheet.courses.push({
-              course: courseGrade.course,
-              marks: courseGrade.marks,
-              grade: courseGrade.grade
-            });
+    // Generate gradesheets for each student
+    for (const student of students) {
+      try {
+        // Check if gradesheet already exists
+        let existingGradesheet = await Gradesheet.findOne({ 
+          student: student._id, 
+          semester: parseInt(semester) 
+        });
+        
+        if (existingGradesheet) {
+          errors.push(`Gradesheet already exists for ${student.name} (${student.usn})`);
+          continue;
+        }
+        
+        // Get all courses for the student in this semester
+        const allCourses = [...student.coreCourses, ...student.electiveCourses];
+        
+        // Find existing gradesheet entries for these courses
+        const existingGrades = await Gradesheet.find({
+          student: student._id,
+          'courses.course': { $in: allCourses }
+        });
+        
+        // Create new gradesheet
+        const gradesheet = new Gradesheet({
+          student: student._id,
+          semester: parseInt(semester),
+          courses: [],
+          cgpa: null,
+          released: false
+        });
+        
+        // Add course grades if they exist
+        if (existingGrades.length > 0) {
+          for (const grade of existingGrades) {
+            for (const courseGrade of grade.courses) {
+              if (allCourses.includes(courseGrade.course)) {
+                gradesheet.courses.push({
+                  course: courseGrade.course,
+                  marks: courseGrade.marks,
+                  grade: courseGrade.grade
+                });
+              }
+            }
           }
         }
+        
+        await gradesheet.save();
+        generatedGradesheets.push(gradesheet);
+        
+      } catch (error) {
+        errors.push(`Error generating gradesheet for ${student.name} (${student.usn}): ${error.message}`);
       }
     }
     
-    await gradesheet.save();
+    if (generatedGradesheets.length === 0) {
+      return res.status(400).json({ 
+        message: 'No gradesheets were generated', 
+        errors: errors 
+      });
+    }
     
-    res.json({ message: 'Gradesheet generated successfully', gradesheet });
+    res.json({ 
+      message: `Successfully generated ${generatedGradesheets.length} gradesheets`,
+      generatedCount: generatedGradesheets.length,
+      errors: errors.length > 0 ? errors : undefined
+    });
+    
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
