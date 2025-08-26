@@ -259,6 +259,96 @@ const calculateGrade = (marks) => {
   return 'F';
 };
 
+// Bulk upload marks from CSV
+const bulkUploadMarks = async (req, res) => {
+  try {
+    const { courseId } = req.body;
+    
+    if (!req.file) {
+      return res.status(400).json({ message: 'No CSV file uploaded' });
+    }
+    
+    // Check if faculty is allocated to this course
+    const course = await Course.findById(courseId);
+    if (!course.faculty.includes(req.user._id)) {
+      return res.status(403).json({ message: 'Not authorized for this course' });
+    }
+    
+    // Parse CSV file and process marks
+    // This is a simplified implementation - in production you'd want proper CSV parsing
+    const csvContent = req.file.buffer.toString();
+    const lines = csvContent.split('\n');
+    const results = [];
+    const errors = [];
+    
+    for (let i = 1; i < lines.length; i++) { // Skip header
+      const line = lines[i].trim();
+      if (!line) continue;
+      
+      const [studentId, marksStr] = line.split(',');
+      const marks = parseInt(marksStr);
+      
+      if (isNaN(marks) || marks < 0 || marks > 100) {
+        errors.push(`Invalid marks for student ${studentId}: ${marksStr}`);
+        continue;
+      }
+      
+      try {
+        // Check if student is enrolled in this course
+        if (!course.students.includes(studentId)) {
+          errors.push(`Student ${studentId} not enrolled in this course`);
+          continue;
+        }
+        
+        // Find or create gradesheet for the student
+        let gradesheet = await Gradesheet.findOne({
+          student: studentId,
+          semester: 1 // Default semester
+        });
+        
+        if (!gradesheet) {
+          gradesheet = new Gradesheet({
+            student: studentId,
+            semester: 1,
+            courses: []
+          });
+        }
+        
+        // Update or add course marks
+        const courseIndex = gradesheet.courses.findIndex(
+          c => c.course.toString() === courseId
+        );
+        
+        if (courseIndex > -1) {
+          gradesheet.courses[courseIndex].marks = marks;
+          gradesheet.courses[courseIndex].grade = calculateGrade(marks);
+        } else {
+          gradesheet.courses.push({
+            course: courseId,
+            marks: marks,
+            grade: calculateGrade(marks)
+          });
+        }
+        
+        await gradesheet.save();
+        results.push({ studentId, marks, grade: calculateGrade(marks) });
+        
+      } catch (error) {
+        errors.push(`Error processing student ${studentId}: ${error.message}`);
+      }
+    }
+    
+    res.json({ 
+      message: `Successfully processed ${results.length} students`,
+      results,
+      errors: errors.length > 0 ? errors : undefined
+    });
+    
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
 module.exports = {
   getProfile,
   updateProfile,
@@ -267,5 +357,6 @@ module.exports = {
   uploadMarks,
   uploadResource,
   createAnnouncement,
-  getCourseAnnouncements
+  getCourseAnnouncements,
+  bulkUploadMarks
 };

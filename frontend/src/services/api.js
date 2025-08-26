@@ -92,6 +92,14 @@ export const facultyAPI = {
   
   // Marks
   uploadMarks: (data) => api.post('/faculty/courses/marks', data),
+  bulkUploadMarks: (formData) => {
+    const config = {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    };
+    return api.post('/faculty/courses/marks/bulk', formData, config);
+  },
   
   // Resources
   uploadResource: (formData) => {
