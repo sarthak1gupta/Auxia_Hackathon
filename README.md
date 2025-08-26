@@ -1,6 +1,8 @@
 # 🎓 Auxia College Management System
 
-A comprehensive full-stack college management system built with React.js, Node.js, Express, and MongoDB Atlas.
+### Team Name: Agentic Innovators (Harsh Gupta, Sarthak Gupta)
+
+A comprehensive full-stack college management system built with React.js, Node.js, Express, and MongoDB Atlas. Your one-stop solution for managing the entire college activities right from Students to Faculties and Club Events!
 
 ## ✨ Features
 
